@@ -7,9 +7,6 @@ class Settings(BaseSettings):
     supabase_key: str
     supabase_service_key: str
     retell_api_key: str
-    jwt_secret: str
-    jwt_algorithm: str = "HS256"
-    jwt_expiration_minutes: int = 10080
     
     class Config:
         env_file = ".env"
