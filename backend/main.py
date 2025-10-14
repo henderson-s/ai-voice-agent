@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routes import auth, agents
+from backend.routes import auth, agents, calls
 
 app = FastAPI(title="Voice Agent API", version="1.0.0")
 
@@ -14,6 +14,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(agents.router)
+app.include_router(calls.router)
 
 
 @app.get("/health")
