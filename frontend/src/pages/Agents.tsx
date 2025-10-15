@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { agents } from '../lib/api';
+import type { AgentConfiguration, AgentCreateInput, AgentUpdateInput, ScenarioType, AmbientSound } from '../types';
+import { agents as agentsApi } from '../lib/api';
 
 export default function Agents() {
-  const [agentList, setAgentList] = useState<any[]>([]);
+  const [agentList, setAgentList] = useState<AgentConfiguration[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [editingAgent, setEditingAgent] = useState<any>(null);
+  const [editingAgent, setEditingAgent] = useState<AgentConfiguration | null>(null);
   const [showEditForm, setShowEditForm] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -34,10 +35,10 @@ CONVERSATION STYLE:
 - Adapt your questions based on their responses
 - Never be pushy or aggressive`;
 
-  const defaultFormData = {
+  const defaultFormData: AgentCreateInput = {
     name: '',
     description: '',
-    scenario_type: 'driver_checkin',
+    scenario_type: 'driver_checkin' as ScenarioType,
     system_prompt: defaultPrompt,
     initial_greeting: 'Hi {{driver_name}}, this is Dispatch with a check call on load {{load_number}}. Can you give me an update on your status?',
     voice_id: '11labs-Adrian',
@@ -60,25 +61,25 @@ CONVERSATION STYLE:
     emergency_keywords: ['accident', 'crash', 'emergency', 'help', 'breakdown', 'broke down', 'medical', 'injury', 'blowout', 'flat tire', 'broke', 'stuck']
   };
 
-  const [formData, setFormData] = useState(defaultFormData);
+  const [formData, setFormData] = useState<AgentCreateInput>(defaultFormData);
 
   useEffect(() => {
     loadAgents();
   }, []);
 
   const loadAgents = async () => {
-    const data = await agents.list();
+    const data = await agentsApi.list();
     setAgentList(data);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingAgent) {
-      await agents.update(editingAgent.id, formData);
+      await agentsApi.update(editingAgent.id, formData as AgentUpdateInput);
       setShowEditForm(false);
       setEditingAgent(null);
     } else {
-      await agents.create(formData);
+      await agentsApi.create(formData);
       setShowForm(false);
     }
     setFormData(defaultFormData);
@@ -86,12 +87,12 @@ CONVERSATION STYLE:
     loadAgents();
   };
 
-  const handleEdit = (agent: any) => {
+  const handleEdit = (agent: AgentConfiguration) => {
     setEditingAgent(agent);
     setFormData({
       name: agent.name || '',
       description: agent.description || '',
-      scenario_type: agent.scenario_type || 'driver_checkin',
+      scenario_type: (agent.scenario_type || 'driver_checkin') as ScenarioType,
       system_prompt: agent.system_prompt,
       initial_greeting: agent.initial_greeting,
       voice_id: agent.voice_id || '11labs-Adrian',
@@ -119,7 +120,7 @@ CONVERSATION STYLE:
 
   const handleDelete = async (agentId: string) => {
     if (confirm('Are you sure you want to delete this agent? This action cannot be undone.')) {
-      await agents.delete(agentId);
+      await agentsApi.delete(agentId);
       loadAgents();
     }
   };
@@ -184,7 +185,7 @@ CONVERSATION STYLE:
                   <label className="block text-sm font-medium text-gray-700 mb-1">Scenario Type *</label>
                   <select
                     value={formData.scenario_type}
-                    onChange={(e) => setFormData({ ...formData, scenario_type: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, scenario_type: e.target.value as ScenarioType })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                     required
                   >
@@ -281,7 +282,7 @@ CONVERSATION STYLE:
                         <label className="block text-sm font-medium text-gray-700 mb-1">Backchannel Words</label>
                         <input
                           type="text"
-                          value={formData.backchannel_words.join(', ')}
+                          value={formData.backchannel_words?.join(', ') || ''}
                           onChange={(e) => handleArrayInput('backchannel_words', e.target.value)}
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                           placeholder="mm-hmm, I see, got it"
@@ -304,7 +305,7 @@ CONVERSATION STYLE:
                         <label className="block text-sm font-medium text-gray-700 mb-1">Filler Words</label>
                         <input
                           type="text"
-                          value={formData.filler_words.join(', ')}
+                          value={formData.filler_words?.join(', ') || ''}
                           onChange={(e) => handleArrayInput('filler_words', e.target.value)}
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                           placeholder="um, uh, hmm"
@@ -376,7 +377,7 @@ CONVERSATION STYLE:
                       <label className="block text-sm font-medium text-gray-700 mb-1">Ambient Sound Type</label>
                       <select
                         value={formData.ambient_sound}
-                        onChange={(e) => setFormData({ ...formData, ambient_sound: e.target.value })}
+                        onChange={(e) => setFormData({ ...formData, ambient_sound: e.target.value as AmbientSound })}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                       >
                         <option value="call-center">Call Center</option>
@@ -426,7 +427,7 @@ CONVERSATION STYLE:
                         <label className="block text-sm font-medium text-gray-700 mb-1">Reminder Keywords</label>
                         <input
                           type="text"
-                          value={formData.reminder_keywords.join(', ')}
+                          value={formData.reminder_keywords?.join(', ') || ''}
                           onChange={(e) => handleArrayInput('reminder_keywords', e.target.value)}
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                           placeholder="POD, proof of delivery, paperwork"
@@ -438,7 +439,7 @@ CONVERSATION STYLE:
                       <label className="block text-sm font-medium text-gray-700 mb-1">Emergency Detection Keywords</label>
                       <input
                         type="text"
-                        value={formData.emergency_keywords.join(', ')}
+                        value={formData.emergency_keywords?.join(', ') || ''}
                         onChange={(e) => handleArrayInput('emergency_keywords', e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                         placeholder="accident, crash, breakdown, medical"
@@ -533,7 +534,7 @@ CONVERSATION STYLE:
                   {agent.enable_filler_words && (
                     <span className="px-2 py-1 bg-green-100 text-green-800 rounded">Filler Words</span>
                   )}
-                  {agent.ambient_sound !== 'silent' && (
+                  {agent.ambient_sound !== 'off' && (
                     <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded">
                       Ambient: {agent.ambient_sound}
                     </span>

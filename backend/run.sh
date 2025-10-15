@@ -1,4 +1,11 @@
 #!/bin/bash
-cd "$(dirname "$0")/.."
-python3 -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
+# Voice Agent Backend Runner
+# Runs the FastAPI backend with uvicorn
+
+cd "$(dirname "$0")/.."
+
+echo "🚀 Starting Voice Agent Backend..."
+echo ""
+
+python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000

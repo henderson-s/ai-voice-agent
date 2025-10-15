@@ -1,153 +1,44 @@
 import { useState, useEffect } from 'react';
-import { agents, calls } from '../lib/api';
 import { RetellWebClient } from 'retell-client-js-sdk';
+import type { AgentConfiguration, Call, WebCallInput, PhoneCallInput, TranscriptEntry } from '../types';
+import { agents as agentsApi, calls as callsApi } from '../lib/api';
 import CallResultsDisplay from '../components/CallResultsDisplay';
 
+type CallType = 'web' | 'phone';
+
+interface CallFormData {
+  agent_configuration_id: string;
+  driver_name: string;
+  phone_number: string;
+  load_number: string;
+}
+
+const INITIAL_FORM_DATA: CallFormData = {
+  agent_configuration_id: '',
+  driver_name: '',
+  phone_number: '',
+  load_number: '',
+};
+
 export default function TestCall() {
-  const [agentList, setAgentList] = useState<any[]>([]);
-  const [callType, setCallType] = useState<'web' | 'phone'>('web');
-  const [formData, setFormData] = useState({
-    agent_configuration_id: '',
-    driver_name: '',
-    phone_number: '',
-    load_number: '',
-  });
+  const [agentList, setAgentList] = useState<AgentConfiguration[]>([]);
+  const [callType, setCallType] = useState<CallType>('web');
+  const [formData, setFormData] = useState<CallFormData>(INITIAL_FORM_DATA);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
   const [inCall, setInCall] = useState(false);
   const [callEnded, setCallEnded] = useState(false);
   const [processingResults, setProcessingResults] = useState(false);
-  const [currentCall, setCurrentCall] = useState<any>(null);
-  const [transcript, setTranscript] = useState<Array<{role: string, content: string}>>([]);
+  const [currentCall, setCurrentCall] = useState<Call | null>(null);
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [retellClient] = useState(() => new RetellWebClient());
 
   useEffect(() => {
     loadAgents();
-
-    // Setup Retell event listeners for real-time transcription
-    retellClient.on('update', (update) => {
-      console.log('Retell update:', update);
-
-      // Handle transcript updates
-      if (update.transcript) {
-        setTranscript(update.transcript);
-      }
-    });
-
-    retellClient.on('call_started', () => {
-      console.log('Call started');
-      setInCall(true);
-    });
-
-    retellClient.on('call_ended', async () => {
-      console.log('Call ended');
-      setInCall(false);
-      setCallEnded(true);
-      setProcessingResults(true);
-      setSuccess('Call ended. Processing transcript and extracting data...');
-
-      // Wait for webhook processing (webhook needs time to analyze transcript)
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
-
-      // Retry fetching with delay to allow webhook processing
-      let retries = 0;
-      const maxRetries = 5;
-
-      while (retries < maxRetries) {
-        try {
-          if (currentCall && currentCall.call_id) {
-            setSuccess(`Fetching call results... (${retries + 1}/${maxRetries})`);
-
-            // First try to get the call from database to get the db ID
-            let callId = null;
-            try {
-              const dbCall = await calls.get(currentCall.call_id);
-              callId = dbCall.id;
-            } catch (e) {
-              // Try finding in call list
-              const allCalls = await calls.list();
-              const foundCall = allCalls.find(c =>
-                c.retell_call_id === currentCall.call_id ||
-                c.id === currentCall.call_id
-              );
-              if (foundCall) {
-                callId = foundCall.id;
-              }
-            }
-
-            if (callId) {
-              // Fetch full call details including transcript and results
-              console.log(`Fetching full details for call ID: ${callId}`);
-              const response = await fetch(
-                `${import.meta.env.VITE_BACKEND_URL}/calls/${callId}/full`,
-                {
-                  headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                  }
-                }
-              );
-
-              console.log(`Response status: ${response.status}`);
-
-              if (response.ok) {
-                const fullData = await response.json();
-                console.log('Full data received:', fullData);
-
-                // Check if we have results
-                if (fullData.results) {
-                  setCurrentCall(fullData.call);
-                  setProcessingResults(false);
-                  setSuccess('✅ Call completed! Results analyzed and ready.');
-                  break; // Success - exit retry loop
-                } else {
-                  // No results yet, retry
-                  console.log('No results yet, retrying...');
-                  retries++;
-                  if (retries < maxRetries) {
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                  }
-                }
-              } else {
-                const errorText = await response.text();
-                console.error('Error fetching full call details:', response.status, errorText);
-                retries++;
-                if (retries < maxRetries) {
-                  await new Promise(resolve => setTimeout(resolve, 2000));
-                }
-              }
-            } else {
-              console.error('Could not find call ID');
-              retries++;
-              if (retries < maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-              }
-            }
-          } else {
-            break; // No current call, exit
-          }
-        } catch (error) {
-          console.error('Error in retry loop:', error);
-          retries++;
-          if (retries < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-        }
-      }
-
-      // If we exhausted retries, show a message
-      if (retries >= maxRetries) {
-        setProcessingResults(false);
-        setSuccess('Call completed. Click "Refresh Data" if results don\'t appear.');
-      }
-    });
-
-    retellClient.on('error', (error) => {
-      console.error('Retell error:', error);
-      alert('Call error: ' + error.message);
-    });
+    setupRetellListeners();
 
     return () => {
-      // Cleanup on unmount
       if (inCall) {
         retellClient.stopCall();
       }
@@ -155,123 +46,166 @@ export default function TestCall() {
   }, []);
 
   const loadAgents = async () => {
-    const data = await agents.list();
-    setAgentList(data);
-    if (data.length > 0) {
-      setFormData({ ...formData, agent_configuration_id: data[0].id });
+    try {
+      const data = await agentsApi.list();
+      setAgentList(data);
+      if (data.length > 0) {
+        setFormData((prev) => ({ ...prev, agent_configuration_id: data[0].id }));
+      }
+    } catch (err) {
+      setError('Failed to load agents');
+      console.error(err);
+    }
+  };
+
+  const setupRetellListeners = () => {
+    retellClient.on('update', (update: any) => {
+      if (update.transcript) {
+        setTranscript(update.transcript);
+      }
+    });
+
+    retellClient.on('call_started', () => {
+      setInCall(true);
+      setSuccess('Call started - speak now!');
+    });
+
+    retellClient.on('call_ended', async () => {
+      setInCall(false);
+      setCallEnded(true);
+      setProcessingResults(true);
+      setSuccess('Call ended. Processing transcript and extracting data...');
+
+      await fetchCallResultsWithRetry();
+    });
+
+    retellClient.on('error', (error: any) => {
+      console.error('Retell error:', error);
+      setError(`Call error: ${error.message}`);
+      setInCall(false);
+    });
+  };
+
+  const fetchCallResultsWithRetry = async () => {
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY = 2000;
+    const INITIAL_DELAY = 5000;
+
+    await new Promise((resolve) => setTimeout(resolve, INITIAL_DELAY));
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        setSuccess(`Fetching call results... (${attempt + 1}/${MAX_RETRIES})`);
+
+        const callId = await findCallId();
+        if (!callId) {
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+          continue;
+        }
+
+        const fullData = await callsApi.getFull(callId);
+
+        if (fullData.results) {
+          setCurrentCall(fullData.call);
+          setProcessingResults(false);
+          setSuccess('✅ Call completed! Results analyzed and ready.');
+          return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+      } catch (err) {
+        console.error('Error fetching call results:', err);
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+      }
+    }
+
+    setProcessingResults(false);
+    setSuccess('Call completed. Click "Refresh Data" if results don\'t appear.');
+  };
+
+  const findCallId = async (): Promise<string | null> => {
+    if (!currentCall) return null;
+
+    try {
+      const call = await callsApi.get(currentCall.id);
+      return call.id;
+    } catch {
+      // Try finding in call list
+      try {
+        const allCalls = await callsApi.list();
+        const foundCall = allCalls.find(
+          (c) => c.retell_call_id === currentCall.retell_call_id || c.id === currentCall.id
+        );
+        return foundCall?.id || null;
+      } catch {
+        return null;
+      }
     }
   };
 
   const handlePhoneCall = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
+
     try {
-      await calls.createPhone(formData);
+      const phoneCallData: PhoneCallInput = {
+        agent_configuration_id: formData.agent_configuration_id,
+        driver_name: formData.driver_name,
+        phone_number: formData.phone_number,
+        load_number: formData.load_number,
+      };
+
+      await callsApi.createPhone(phoneCallData);
       setSuccess('Phone call initiated successfully!');
-      setFormData({ ...formData, driver_name: '', phone_number: '', load_number: '' });
-    } catch (error: any) {
-      alert(error.message);
+      resetForm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to initiate phone call');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleWebCall = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     setCallEnded(false);
     setTranscript([]);
+
     try {
-      const webCallData = {
+      const webCallData: WebCallInput = {
         agent_configuration_id: formData.agent_configuration_id,
         driver_name: formData.driver_name,
         load_number: formData.load_number,
       };
-      const response = await calls.createWeb(webCallData);
 
-      setCurrentCall(response);
+      const response = await callsApi.createWeb(webCallData);
+      setCurrentCall({ id: response.call_id } as Call);
+
       await retellClient.startCall({
         accessToken: response.access_token,
       });
-
-      setSuccess('Web call started! Speak now...');
-
-      // Wait a moment for webhook to process after call ends
-      setTimeout(async () => {
-        if (!inCall && callEnded) {
-          try {
-            let callDetails = null;
-
-            if (response.call_id) {
-              try {
-                callDetails = await calls.get(response.call_id);
-              } catch (e) {
-                console.log('Could not fetch by call_id, trying by retell_call_id');
-              }
-            }
-
-            if (!callDetails) {
-              const allCalls = await calls.list();
-              callDetails = allCalls.find(call =>
-                call.retell_call_id === response.call_id ||
-                call.id === response.call_id
-              );
-            }
-
-            if (callDetails) {
-              setCurrentCall(callDetails);
-              setSuccess('Call completed successfully!');
-            } else {
-              console.error('Could not find call details');
-              setSuccess('Call ended but details not yet available. Check call history in a moment.');
-            }
-          } catch (error) {
-            console.error('Error fetching call details:', error);
-            setSuccess('Call ended but could not fetch details. Check call history.');
-          }
-        }
-      }, 2000);
-    } catch (error: any) {
-      alert(error.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start web call');
       setInCall(false);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const endCall = async () => {
     retellClient.stopCall();
     setSuccess('Call ended by user. Fetching results...');
+  };
 
-    // Wait for webhook processing and fetch call details
-    setTimeout(async () => {
-      try {
-        let callDetails = null;
-
-        if (currentCall && currentCall.call_id) {
-          try {
-            callDetails = await calls.get(currentCall.call_id);
-          } catch (e) {
-            console.log('Could not fetch by call_id, trying by retell_call_id');
-          }
-        }
-
-        if (!callDetails && currentCall && currentCall.retell_call_id) {
-          const allCalls = await calls.list();
-          callDetails = allCalls.find(call =>
-            call.retell_call_id === currentCall.retell_call_id
-          );
-        }
-
-        if (callDetails) {
-          setCurrentCall(callDetails);
-          setSuccess('Call ended successfully!');
-        } else {
-          setSuccess('Call ended. Check call history for details.');
-        }
-      } catch (error) {
-        console.error('Error fetching call details:', error);
-        setSuccess('Call ended. Check call history for details.');
-      }
-    }, 2000);
+  const resetForm = () => {
+    setFormData({
+      ...formData,
+      driver_name: '',
+      phone_number: '',
+      load_number: '',
+    });
   };
 
   const startNewCall = () => {
@@ -280,18 +214,43 @@ export default function TestCall() {
     setCurrentCall(null);
     setTranscript([]);
     setSuccess('');
-    setFormData({ ...formData, driver_name: '', phone_number: '', load_number: '' });
+    setError('');
+    resetForm();
+  };
+
+  const handleRefresh = async () => {
+    if (!currentCall) return;
+
+    try {
+      setSuccess('Fetching latest call data...');
+      const updatedCall = await callsApi.refresh(currentCall.id);
+      setCurrentCall(updatedCall);
+      setSuccess('Call data refreshed successfully!');
+    } catch (err) {
+      setError('Failed to refresh call data');
+      console.error(err);
+    }
   };
 
   return (
     <div className="px-4 max-w-2xl mx-auto">
       <h2 className="text-2xl font-bold text-gray-900 mb-6">Test Call</h2>
 
+      {/* Success Message */}
       {success && (
-        <div className="mb-4 p-4 bg-green-100 text-green-700 rounded-lg">{success}</div>
+        <div className="mb-4 p-4 bg-green-100 text-green-700 rounded-lg border border-green-200">
+          {success}
+        </div>
       )}
 
-      {/* Real-time transcript during call */}
+      {/* Error Message */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg border border-red-200">
+          {error}
+        </div>
+      )}
+
+      {/* Live Transcript During Call */}
       {inCall && transcript.length > 0 && (
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex items-center justify-between mb-3">
@@ -300,11 +259,14 @@ export default function TestCall() {
           </div>
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {transcript.map((item, index) => (
-              <div key={index} className={`p-2 rounded ${
-                item.role === 'agent'
-                  ? 'bg-indigo-100 text-indigo-900 ml-4'
-                  : 'bg-white text-gray-900 mr-4'
-              }`}>
+              <div
+                key={index}
+                className={`p-2 rounded ${
+                  item.role === 'agent'
+                    ? 'bg-indigo-100 text-indigo-900 ml-4'
+                    : 'bg-white text-gray-900 mr-4'
+                }`}
+              >
                 <div className="text-xs font-semibold mb-1 uppercase">
                   {item.role === 'agent' ? '🤖 Agent' : '👤 You'}
                 </div>
@@ -315,33 +277,31 @@ export default function TestCall() {
         </div>
       )}
 
-      {/* Processing indicator */}
+      {/* Processing Indicator */}
       {processingResults && (
         <div className="mb-4 p-6 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
             <div>
               <p className="text-blue-900 font-medium">Analyzing call transcript...</p>
-              <p className="text-blue-700 text-sm mt-1">Extracting structured data from conversation</p>
+              <p className="text-blue-700 text-sm mt-1">
+                Extracting structured data from conversation
+              </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Call results after call ends */}
-      {callEnded && currentCall && !processingResults && <CallResultsDisplay call={currentCall} onRefresh={async () => {
-        try {
-          setSuccess('Fetching latest call data...');
-          const callIdToUse = currentCall.retell_call_id || currentCall.id;
-          const updatedCall = await calls.refresh(callIdToUse);
-          setCurrentCall(updatedCall);
-          setSuccess('Call data refreshed successfully!');
-        } catch (error: any) {
-          console.error('Error refreshing:', error);
-          setSuccess('Error refreshing call data');
-        }
-      }} onStartNew={startNewCall} />}
+      {/* Call Results After Call Ends */}
+      {callEnded && currentCall && !processingResults && (
+        <CallResultsDisplay
+          call={currentCall}
+          onRefresh={handleRefresh}
+          onStartNew={startNewCall}
+        />
+      )}
 
+      {/* Call Form */}
       <div className="bg-white p-6 rounded-lg shadow">
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-3">Call Type</label>
@@ -354,6 +314,7 @@ export default function TestCall() {
                   ? 'bg-indigo-600 text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
+              disabled={inCall || callEnded}
             >
               Web Call (Test Now)
             </button>
@@ -365,20 +326,29 @@ export default function TestCall() {
                   ? 'bg-indigo-600 text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
+              disabled={inCall || callEnded}
             >
               Phone Call
             </button>
           </div>
         </div>
 
-        <form onSubmit={callType === 'web' ? handleWebCall : handlePhoneCall} className="space-y-4">
+        <form
+          onSubmit={callType === 'web' ? handleWebCall : handlePhoneCall}
+          className="space-y-4"
+        >
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Select Agent</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Select Agent
+            </label>
             <select
               value={formData.agent_configuration_id}
-              onChange={(e) => setFormData({ ...formData, agent_configuration_id: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, agent_configuration_id: e.target.value })
+              }
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
               required
+              disabled={inCall || callEnded}
             >
               {agentList.map((agent) => (
                 <option key={agent.id} value={agent.id}>
@@ -389,7 +359,9 @@ export default function TestCall() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Driver Name</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Driver Name
+            </label>
             <input
               type="text"
               value={formData.driver_name}
@@ -397,25 +369,31 @@ export default function TestCall() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
               placeholder="John Smith"
               required
+              disabled={inCall || callEnded}
             />
           </div>
 
           {callType === 'phone' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Phone Number
+              </label>
               <input
                 type="tel"
                 value={formData.phone_number}
                 onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                 placeholder="+1234567890"
-                required={callType === 'phone'}
+                required
+                disabled={inCall || callEnded}
               />
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Load Number</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Load Number
+            </label>
             <input
               type="text"
               value={formData.load_number}
@@ -423,6 +401,7 @@ export default function TestCall() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
               placeholder="LOAD-12345"
               required
+              disabled={inCall || callEnded}
             />
           </div>
 
@@ -430,15 +409,19 @@ export default function TestCall() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+              className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {loading ? 'Starting...' : callType === 'web' ? 'Start Web Call' : 'Initiate Phone Call'}
+              {loading
+                ? 'Starting...'
+                : callType === 'web'
+                ? 'Start Web Call'
+                : 'Initiate Phone Call'}
             </button>
           ) : inCall ? (
             <button
               type="button"
               onClick={endCall}
-              className="w-full bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700"
+              className="w-full bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700 transition"
             >
               End Call
             </button>
@@ -448,4 +431,3 @@ export default function TestCall() {
     </div>
   );
 }
-

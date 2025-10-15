@@ -1,11 +1,6 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import type { User, AuthResponse, LoginCredentials, RegisterCredentials } from '../types';
 import { api } from '../lib/api';
-
-interface User {
-  id: string;
-  email: string;
-  full_name: string;
-}
 
 interface RegistrationResult {
   requiresConfirmation: boolean;
@@ -16,7 +11,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, full_name: string) => Promise<RegistrationResult>;
+  register: (email: string, password: string, fullName?: string) => Promise<RegistrationResult>;
   logout: () => void;
 }
 
@@ -27,13 +22,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadUser = async () => {
+    const loadUser = async (): Promise<void> => {
       const token = localStorage.getItem('token');
       if (token) {
         try {
-          const userData = await api.get('/auth/me');
+          const userData = await api.get<User>('/auth/me');
           setUser(userData);
         } catch (error) {
+          console.error('Failed to load user:', error);
           localStorage.removeItem('token');
         }
       }
@@ -42,29 +38,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadUser();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const data = await api.post('/auth/login', { email, password });
+  const login = async (email: string, password: string): Promise<void> => {
+    const credentials: LoginCredentials = { email, password };
+    const data = await api.post<AuthResponse>('/auth/login', credentials);
     localStorage.setItem('token', data.access_token);
-    const userData = await api.get('/auth/me');
+    const userData = await api.get<User>('/auth/me');
     setUser(userData);
   };
 
-  const register = async (email: string, password: string, full_name: string) => {
-    const data = await api.post('/auth/register', { email, password, full_name });
-    
+  const register = async (
+    email: string,
+    password: string,
+    _fullName?: string
+  ): Promise<RegistrationResult> => {
+    const credentials: RegisterCredentials = { email, password };
+    const data = await api.post<any>('/auth/register', credentials);
+
     // Check if email confirmation is required
     if (data.requires_confirmation) {
-      return { requiresConfirmation: true, message: data.message };
+      return {
+        requiresConfirmation: true,
+        message: data.message || 'Please check your email to confirm your account',
+      };
     }
-    
+
     // Auto-login if confirmation not required
     if (data.access_token) {
       localStorage.setItem('token', data.access_token);
-      const userData = await api.get('/auth/me');
+      const userData = await api.get<User>('/auth/me');
       setUser(userData);
     }
-    
-    return { requiresConfirmation: false, message: data.message };
+
+    return {
+      requiresConfirmation: false,
+      message: data.message || 'Account created successfully',
+    };
   };
 
   const logout = () => {

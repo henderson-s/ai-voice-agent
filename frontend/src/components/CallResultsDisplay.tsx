@@ -1,72 +1,74 @@
 import { useState, useEffect } from 'react';
+import type { Call, CallResults, CallTranscript } from '../types';
+import { calls as callsApi } from '../lib/api';
 
 interface CallResultsDisplayProps {
-  call: any;
+  call: Call;
   onRefresh: () => Promise<void>;
   onStartNew: () => void;
 }
 
-// Helper function to format enum values for display
+/**
+ * Format enum values for display (snake_case to Title Case)
+ */
 function formatFieldValue(value: string | null | undefined): string {
   if (!value) return 'Not specified';
-  // Convert snake_case to Title Case
   return value
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 }
 
-export default function CallResultsDisplay({ call, onRefresh, onStartNew }: CallResultsDisplayProps) {
-  const [results, setResults] = useState<any>(null);
-  const [transcript, setTranscript] = useState<any>(null);
+export default function CallResultsDisplay({
+  call,
+  onRefresh,
+  onStartNew,
+}: CallResultsDisplayProps) {
+  const [results, setResults] = useState<CallResults | null>(null);
+  const [transcript, setTranscript] = useState<CallTranscript | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCallDetails();
-  }, [call?.id]);
+  }, [call.id]);
 
-  const fetchCallDetails = async () => {
-    if (!call?.id) {
-      console.log('No call.id provided, skipping fetch');
+  const fetchCallDetails = async (): Promise<void> => {
+    if (!call.id) {
       setLoading(false);
+      setError('No call ID provided');
       return;
     }
 
     try {
       setLoading(true);
-      console.log(`Fetching full details for call: ${call.id}`);
+      setError(null);
 
-      // Fetch full call details including transcripts and results
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/calls/${call.id}/full`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      console.log(`Response status: ${response.status}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Received data:', data);
-        setResults(data.results);
-        setTranscript(data.transcript);
-      } else {
-        const errorText = await response.text();
-        console.error(`Error response: ${response.status} - ${errorText}`);
-      }
-    } catch (error) {
-      console.error('Error fetching call details:', error);
+      const data = await callsApi.getFull(call.id);
+      setResults(data.results || null);
+      setTranscript(data.transcript || null);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch call details';
+      setError(errorMessage);
+      console.error('Error fetching call details:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await onRefresh();
-    await fetchCallDetails();
-    setRefreshing(false);
+  const handleRefresh = async (): Promise<void> => {
+    try {
+      setRefreshing(true);
+      setError(null);
+      await onRefresh();
+      await fetchCallDetails();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to refresh data';
+      setError(errorMessage);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   if (loading) {
@@ -80,8 +82,24 @@ export default function CallResultsDisplay({ call, onRefresh, onStartNew }: Call
     );
   }
 
-  const isEmergency = results?.is_emergency;
-  const scenarioType = results?.scenario_type || 'unknown';
+  if (error) {
+    return (
+      <div className="mb-4 p-6 bg-white border border-red-200 rounded-lg">
+        <div className="text-center">
+          <p className="text-red-600 font-medium">Error loading call results</p>
+          <p className="mt-1 text-sm text-red-500">{error}</p>
+          <button
+            onClick={fetchCallDetails}
+            className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const isEmergency = results?.is_emergency || false;
 
   return (
     <div className="space-y-4 mb-4">
@@ -142,7 +160,7 @@ export default function CallResultsDisplay({ call, onRefresh, onStartNew }: Call
                 label="Injury Status"
                 value={formatFieldValue(results.injury_status)}
               />
-              <InfoField label="Emergency Location" value={results.emergency_location || results.location_emergency} />
+              <InfoField label="Emergency Location" value={results.location_emergency} />
               <InfoField
                 label="Load Secure"
                 value={results.load_secure === true ? 'Yes' : results.load_secure === false ? 'No' : 'Unknown'}
