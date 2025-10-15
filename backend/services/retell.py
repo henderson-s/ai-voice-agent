@@ -61,7 +61,7 @@ class RetellService:
     async def initiate_call(self, agent_id: str, phone_number: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{self.BASE_URL}/create-phone-call",
+                f"{self.BASE_URL}/create-phone-number-call",
                 headers=self.headers,
                 json={
                     "agent_id": agent_id,

@@ -7,11 +7,16 @@ interface User {
   full_name: string;
 }
 
+interface RegistrationResult {
+  requiresConfirmation: boolean;
+  message: string;
+}
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, full_name: string) => Promise<void>;
+  register: (email: string, password: string, full_name: string) => Promise<RegistrationResult>;
   logout: () => void;
 }
 
@@ -46,9 +51,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (email: string, password: string, full_name: string) => {
     const data = await api.post('/auth/register', { email, password, full_name });
-    localStorage.setItem('token', data.access_token);
-    const userData = await api.get('/auth/me');
-    setUser(userData);
+    
+    // Check if email confirmation is required
+    if (data.requires_confirmation) {
+      return { requiresConfirmation: true, message: data.message };
+    }
+    
+    // Auto-login if confirmation not required
+    if (data.access_token) {
+      localStorage.setItem('token', data.access_token);
+      const userData = await api.get('/auth/me');
+      setUser(userData);
+    }
+    
+    return { requiresConfirmation: false, message: data.message };
   };
 
   const logout = () => {

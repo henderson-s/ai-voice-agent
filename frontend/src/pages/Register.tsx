@@ -7,14 +7,22 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const { register } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    setSuccess('');
     try {
-      await register(email, password, fullName);
-      navigate('/dashboard');
+      const result = await register(email, password, fullName);
+      
+      if (result.requiresConfirmation) {
+        setSuccess(result.message + ' You can login after confirming your email.');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError(err.message);
     }
@@ -27,6 +35,7 @@ export default function Register() {
         <h2 className="text-xl font-semibold text-gray-700 mb-6 text-center">Create Account</h2>
         
         {error && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">{error}</div>}
+        {success && <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-lg text-sm">{success}</div>}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

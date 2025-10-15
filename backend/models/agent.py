@@ -6,7 +6,6 @@ from datetime import datetime
 class AgentConfigCreate(BaseModel):
     name: str
     description: Optional[str] = None
-    scenario_type: str
     system_prompt: str
     initial_greeting: str
     voice_id: Optional[str] = "11labs-Adrian"
@@ -21,7 +20,6 @@ class AgentConfigCreate(BaseModel):
 class AgentConfigUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    scenario_type: Optional[str] = None
     system_prompt: Optional[str] = None
     initial_greeting: Optional[str] = None
     voice_id: Optional[str] = None
@@ -39,7 +37,6 @@ class AgentConfigResponse(BaseModel):
     user_id: str
     name: str
     description: Optional[str]
-    scenario_type: str
     system_prompt: str
     initial_greeting: str
     retell_agent_id: Optional[str]
