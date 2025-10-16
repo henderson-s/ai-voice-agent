@@ -1,22 +1,14 @@
 import { useState, useEffect } from 'react';
-import type { Call, CallStatus } from '../types';
+import type { Call } from '../types';
 import { calls as callsApi } from '../lib/api';
+import Button from '../components/ui/Button';
+import Badge from '../components/ui/Badge';
+import Alert from '../components/ui/Alert';
+import { Card, CardBody } from '../components/ui/Card';
 import CallResultsDisplay from '../components/CallResultsDisplay';
-
-const STATUS_COLORS: Record<CallStatus, string> = {
-  completed: 'bg-green-100 text-green-800',
-  in_progress: 'bg-blue-100 text-blue-800',
-  failed: 'bg-red-100 text-red-800',
-  ended: 'bg-gray-100 text-gray-800',
-  initiated: 'bg-yellow-100 text-yellow-800',
-};
-
-function formatDuration(seconds?: number): string {
-  if (!seconds) return 'N/A';
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}m ${remainingSeconds}s`;
-}
+import { STATUS_COLORS, CALL_TYPE_ICONS, CALL_TYPE_LABELS } from '../constants/call';
+import { formatDateTime, formatDuration } from '../utils/format';
+import { cn } from '../utils/classnames';
 
 export default function Calls() {
   const [callList, setCallList] = useState<Call[]>([]);
@@ -96,9 +88,9 @@ export default function Calls() {
       <h2 className="text-2xl font-bold text-gray-900 mb-6">Call History</h2>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg border border-red-200">
+        <Alert variant="error" className="mb-4">
           {error}
-        </div>
+        </Alert>
       )}
 
       {loading ? (
@@ -114,53 +106,45 @@ export default function Calls() {
       ) : (
         <div className="grid gap-4">
           {callList.map((call) => (
-            <div key={call.id} className="bg-white p-6 rounded-lg shadow hover:shadow-md transition">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {call.call_type === 'web' ? '🌐 Web Call' : '📞 Phone Call'}
-                    </h3>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        STATUS_COLORS[call.status]
-                      }`}
-                    >
-                      {call.status}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600">
-                    Driver: <span className="font-medium">{call.driver_name}</span> | Load:{' '}
-                    <span className="font-medium">{call.load_number}</span>
-                  </p>
-                  {call.phone_number && (
+            <Card key={call.id} className="hover:shadow-md transition">
+              <CardBody>
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {CALL_TYPE_ICONS[call.call_type]} {CALL_TYPE_LABELS[call.call_type]}
+                      </h3>
+                      <Badge className={cn(STATUS_COLORS[call.status])}>
+                        {call.status}
+                      </Badge>
+                    </div>
                     <p className="text-sm text-gray-600">
-                      Phone: <span className="font-medium">{call.phone_number}</span>
+                      Driver: <span className="font-medium">{call.driver_name}</span> | Load:{' '}
+                      <span className="font-medium">{call.load_number}</span>
                     </p>
-                  )}
-                  <p className="text-sm text-gray-500 mt-1">
-                    {new Date(call.created_at).toLocaleString()}
-                    {call.duration_seconds && (
-                      <span className="ml-2">• Duration: {formatDuration(call.duration_seconds)}</span>
+                    {call.phone_number && (
+                      <p className="text-sm text-gray-600">
+                        Phone: <span className="font-medium">{call.phone_number}</span>
+                      </p>
                     )}
-                  </p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {formatDateTime(call.created_at)}
+                      {call.duration_seconds && (
+                        <span className="ml-2">• Duration: {formatDuration(call.duration_seconds)}</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 ml-4">
+                    <Button size="sm" onClick={() => viewCallDetails(call)}>
+                      View Details
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => deleteCall(call.id)}>
+                      Delete
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-2 ml-4">
-                  <button
-                    onClick={() => viewCallDetails(call)}
-                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
-                  >
-                    View Details
-                  </button>
-                  <button
-                    onClick={() => deleteCall(call.id)}
-                    className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
+              </CardBody>
+            </Card>
           ))}
         </div>
       )}
@@ -187,12 +171,9 @@ export default function Calls() {
               />
 
               <div className="mt-4">
-                <button
-                  onClick={closeDetails}
-                  className="w-full px-4 py-3 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 transition"
-                >
+                <Button fullWidth variant="secondary" size="lg" onClick={closeDetails}>
                   Close
-                </button>
+                </Button>
               </div>
             </div>
           </div>

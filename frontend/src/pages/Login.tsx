@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import Button from '../components/ui/Button';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -14,8 +15,8 @@ export default function Login() {
     try {
       await login(email, password);
       navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
     }
   };
 
@@ -50,12 +51,12 @@ export default function Login() {
             />
           </div>
           
-          <button
+          <Button
             type="submit"
-            className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 transition"
+            fullWidth
           >
             Sign In
-          </button>
+          </Button>
         </form>
         
         <p className="mt-4 text-center text-sm text-gray-600">
