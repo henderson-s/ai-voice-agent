@@ -1,466 +1,111 @@
-import { useState, useEffect } from 'react';
-import type { AgentConfiguration, AgentCreateInput, AgentUpdateInput, ScenarioType, AmbientSound } from '../types';
-import { agents as agentsApi } from '../lib/api';
-import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
-import Select from '../components/ui/Select';
-import Textarea from '../components/ui/Textarea';
-import Badge from '../components/ui/Badge';
-import { Card, CardBody } from '../components/ui/Card';
-import {
-  DEFAULT_AGENT_FORM_DATA,
-  LANGUAGE_OPTIONS,
-  SCENARIO_TYPE_OPTIONS,
-  AMBIENT_SOUND_OPTIONS
-} from '../constants/agent';
-import { formatDate, arrayToString, stringToArray } from '../utils/format';
+import { useState, useEffect } from "react";
+import { agents as agentsApi } from "../lib/api";
+import Button from "../components/ui/Button";
+import PageHeader from "../components/ui/PageHeader";
+import LoadingSpinner from "../components/ui/LoadingSpinner";
+import EmptyState from "../components/ui/EmptyState";
+import AgentCard from "../components/agents/AgentCard";
+import AgentForm from "../components/agents/AgentForm";
+import type {
+  AgentConfiguration,
+  AgentCreateInput,
+  AgentUpdateInput,
+} from "../types";
 
 export default function Agents() {
   const [agentList, setAgentList] = useState<AgentConfiguration[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingAgent, setEditingAgent] = useState<AgentConfiguration | null>(null);
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [formData, setFormData] = useState<AgentCreateInput>(DEFAULT_AGENT_FORM_DATA);
+  const [editingAgent, setEditingAgent] = useState<AgentConfiguration | null>(
+    null
+  );
 
   useEffect(() => {
     loadAgents();
   }, []);
 
   const loadAgents = async () => {
-    const data = await agentsApi.list();
-    setAgentList(data);
+    try {
+      setLoading(true);
+      const data = await agentsApi.list();
+      setAgentList(data);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (data: AgentCreateInput | AgentUpdateInput) => {
     if (editingAgent) {
-      await agentsApi.update(editingAgent.id, formData as AgentUpdateInput);
-      setShowEditForm(false);
+      await agentsApi.update(editingAgent.id, data as AgentUpdateInput);
       setEditingAgent(null);
     } else {
-      await agentsApi.create(formData);
+      await agentsApi.create(data as AgentCreateInput);
       setShowForm(false);
     }
-    setFormData(DEFAULT_AGENT_FORM_DATA);
-    setShowAdvanced(false);
-    loadAgents();
+    await loadAgents();
   };
 
   const handleEdit = (agent: AgentConfiguration) => {
     setEditingAgent(agent);
-    setFormData({
-      name: agent.name || '',
-      description: agent.description || '',
-      scenario_type: (agent.scenario_type || 'driver_checkin') as ScenarioType,
-      system_prompt: agent.system_prompt,
-      initial_greeting: agent.initial_greeting,
-      voice_id: agent.voice_id || '11labs-Adrian',
-      language: agent.language || 'en-US',
-      enable_backchannel: agent.enable_backchannel ?? true,
-      backchannel_words: agent.backchannel_words || ['mm-hmm', 'I see', 'got it'],
-      enable_filler_words: agent.enable_filler_words ?? true,
-      filler_words: agent.filler_words || ['um', 'uh', 'hmm'],
-      interruption_sensitivity: agent.interruption_sensitivity || 0.7,
-      response_delay_ms: agent.response_delay_ms || 800,
-      responsiveness: agent.responsiveness || 0.8,
-      ambient_sound: agent.ambient_sound || 'call-center',
-      ambient_sound_volume: agent.ambient_sound_volume || 0.5,
-      max_call_duration_seconds: agent.max_call_duration_seconds || 600,
-      enable_auto_end_call: agent.enable_auto_end_call ?? true,
-      end_call_after_silence_ms: agent.end_call_after_silence_ms || 10000,
-      pronunciation_guide: agent.pronunciation_guide || {},
-      reminder_keywords: agent.reminder_keywords || ['POD', 'proof of delivery'],
-      enable_reminder: agent.enable_reminder ?? true,
-      emergency_keywords: agent.emergency_keywords || ['accident', 'crash', 'emergency']
-    });
-    setShowEditForm(true);
     setShowForm(false);
   };
 
   const handleDelete = async (agentId: string) => {
-    if (confirm('Are you sure you want to delete this agent? This action cannot be undone.')) {
-      await agentsApi.delete(agentId);
-      loadAgents();
-    }
+    await agentsApi.delete(agentId);
+    await loadAgents();
   };
 
-  const cancelEdit = () => {
-    setShowEditForm(false);
+  const handleCancel = () => {
     setEditingAgent(null);
-    setFormData(DEFAULT_AGENT_FORM_DATA);
-    setShowAdvanced(false);
+    setShowForm(false);
   };
 
-  const handleArrayInput = (field: string, value: string) => {
-    setFormData({ ...formData, [field]: stringToArray(value) });
+  const handleNewAgent = () => {
+    setEditingAgent(null);
+    setShowForm(!showForm);
   };
 
   return (
     <div className="px-4">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Agent Configurations</h2>
-        <Button onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : 'New Agent'}
-        </Button>
-      </div>
+      <PageHeader
+        title="Agent Configurations"
+        action={
+          <Button onClick={handleNewAgent}>
+            {showForm ? "Cancel" : "New Agent"}
+          </Button>
+        }
+      />
 
-      {(showForm || showEditForm) && (
-        <Card className="mb-6 max-h-[80vh] overflow-y-auto">
-          <CardBody>
-            <h3 className="text-lg font-semibold mb-4">
-              {editingAgent ? 'Edit Agent' : 'Create New Agent'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-6">
-
-              {/* Basic Information */}
-              <div className="border-b pb-4">
-                <h4 className="text-md font-semibold text-gray-700 mb-3">Basic Information</h4>
-                <div className="space-y-4">
-                  <Input
-                    label="Name *"
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Dispatch Check-in Agent"
-                    required
-                  />
-
-                  <Input
-                    label="Description"
-                    type="text"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Handles routine driver check-ins"
-                  />
-
-                  <Select
-                    label="Scenario Type *"
-                    value={formData.scenario_type}
-                    onChange={(e) => setFormData({ ...formData, scenario_type: e.target.value as ScenarioType })}
-                    options={SCENARIO_TYPE_OPTIONS}
-                    helpText="Emergency Protocol can dynamically pivot when emergency keywords are detected"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Prompts */}
-              <div className="border-b pb-4">
-                <h4 className="text-md font-semibold text-gray-700 mb-3">Prompts & Greetings</h4>
-                <div className="space-y-4">
-                  <Textarea
-                    label="System Prompt *"
-                    value={formData.system_prompt}
-                    onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
-                    className="font-mono text-sm"
-                    rows={8}
-                    required
-                  />
-
-                  <Input
-                    label="Initial Greeting *"
-                    type="text"
-                    value={formData.initial_greeting}
-                    onChange={(e) => setFormData({ ...formData, initial_greeting: e.target.value })}
-                    helpText={
-                      <>
-                        Use <code className="bg-gray-100 px-1 rounded">{'{{driver_name}}'}</code> and{' '}
-                        <code className="bg-gray-100 px-1 rounded">{'{{load_number}}'}</code> placeholders
-                      </>
-                    }
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Voice Settings */}
-              <div className="border-b pb-4">
-                <h4 className="text-md font-semibold text-gray-700 mb-3">Voice Settings</h4>
-                <Select
-                  label="Language"
-                  value={formData.language}
-                  onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-                  options={LANGUAGE_OPTIONS}
-                  helpText="Voice will be automatically selected by Retell AI"
-                />
-              </div>
-
-              {/* Advanced Settings Toggle */}
-              <div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  fullWidth
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                >
-                  {showAdvanced ? '▼' : '▶'} Advanced Human-Like Settings (Recommended)
-                </Button>
-              </div>
-
-              {showAdvanced && (
-                <>
-                  {/* Human-Like Behavior */}
-                  <div className="border-b pb-4 bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-md font-semibold text-gray-700 mb-3">Human-Like Behavior</h4>
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.enable_backchannel}
-                          onChange={(e) => setFormData({ ...formData, enable_backchannel: e.target.checked })}
-                          className="w-4 h-4"
-                        />
-                        <label className="text-sm font-medium text-gray-700">
-                          Enable Backchanneling (mm-hmm, I see)
-                        </label>
-                      </div>
-
-                      {formData.enable_backchannel && (
-                        <Input
-                          label="Backchannel Words"
-                          type="text"
-                          value={arrayToString(formData.backchannel_words || [])}
-                          onChange={(e) => handleArrayInput('backchannel_words', e.target.value)}
-                          placeholder="mm-hmm, I see, got it"
-                        />
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.enable_filler_words}
-                          onChange={(e) => setFormData({ ...formData, enable_filler_words: e.target.checked })}
-                          className="w-4 h-4"
-                        />
-                        <label className="text-sm font-medium text-gray-700">Enable Filler Words (um, uh)</label>
-                      </div>
-
-                      {formData.enable_filler_words && (
-                        <Input
-                          label="Filler Words"
-                          type="text"
-                          value={arrayToString(formData.filler_words || [])}
-                          onChange={(e) => handleArrayInput('filler_words', e.target.value)}
-                          placeholder="um, uh, hmm"
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Conversation Dynamics */}
-                  <div className="border-b pb-4 bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-md font-semibold text-gray-700 mb-3">Conversation Dynamics</h4>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Interruption Sensitivity: {formData.interruption_sensitivity}
-                        </label>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          value={formData.interruption_sensitivity}
-                          onChange={(e) => setFormData({ ...formData, interruption_sensitivity: parseFloat(e.target.value) })}
-                          className="w-full"
-                        />
-                        <p className="text-xs text-gray-500">Lower = harder to interrupt, Higher = more natural conversation</p>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Response Delay: {formData.response_delay_ms}ms
-                        </label>
-                        <input
-                          type="range"
-                          min="500"
-                          max="1500"
-                          step="50"
-                          value={formData.response_delay_ms}
-                          onChange={(e) => setFormData({ ...formData, response_delay_ms: parseInt(e.target.value) })}
-                          className="w-full"
-                        />
-                        <p className="text-xs text-gray-500">Natural pause before agent responds</p>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Responsiveness: {formData.responsiveness}
-                        </label>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.05"
-                          value={formData.responsiveness}
-                          onChange={(e) => setFormData({ ...formData, responsiveness: parseFloat(e.target.value) })}
-                          className="w-full"
-                        />
-                        <p className="text-xs text-gray-500">How quickly agent picks up on conversation cues</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Ambient Sound */}
-                  <div className="border-b pb-4 bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-md font-semibold text-gray-700 mb-3">Ambient Sound (Realism)</h4>
-                    <div className="space-y-4">
-                      <Select
-                        label="Ambient Sound Type"
-                        value={formData.ambient_sound}
-                        onChange={(e) => setFormData({ ...formData, ambient_sound: e.target.value as AmbientSound })}
-                        options={AMBIENT_SOUND_OPTIONS}
-                        helpText="Adds realistic background ambience"
-                      />
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Ambient Volume: {formData.ambient_sound_volume}
-                        </label>
-                        <input
-                          type="range"
-                          min="0"
-                          max="2"
-                          step="0.1"
-                          value={formData.ambient_sound_volume}
-                          onChange={(e) => setFormData({ ...formData, ambient_sound_volume: parseFloat(e.target.value) })}
-                          className="w-full"
-                        />
-                        <p className="text-xs text-gray-500">Range: 0 (quiet) to 2 (loud), default: 1</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Scenario-Specific Settings */}
-                  <div className="border-b pb-4 bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-md font-semibold text-gray-700 mb-3">Scenario-Specific Settings</h4>
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.enable_reminder}
-                          onChange={(e) => setFormData({ ...formData, enable_reminder: e.target.checked })}
-                          className="w-4 h-4"
-                        />
-                        <label className="text-sm font-medium text-gray-700">Enable POD/Reminder</label>
-                      </div>
-
-                      {formData.enable_reminder && (
-                        <Input
-                          label="Reminder Keywords"
-                          type="text"
-                          value={arrayToString(formData.reminder_keywords || [])}
-                          onChange={(e) => handleArrayInput('reminder_keywords', e.target.value)}
-                          placeholder="POD, proof of delivery, paperwork"
-                        />
-                      )}
-
-                      <Input
-                        label="Emergency Detection Keywords"
-                        type="text"
-                        value={arrayToString(formData.emergency_keywords || [])}
-                        onChange={(e) => handleArrayInput('emergency_keywords', e.target.value)}
-                        placeholder="accident, crash, breakdown, medical"
-                        helpText="Agent will pivot to emergency protocol when these are detected"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Call Management */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-md font-semibold text-gray-700 mb-3">Call Management</h4>
-                    <div className="space-y-4">
-                      <Input
-                        label="Max Call Duration (seconds)"
-                        type="number"
-                        value={formData.max_call_duration_seconds?.toString()}
-                        onChange={(e) => setFormData({ ...formData, max_call_duration_seconds: parseInt(e.target.value) })}
-                      />
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={formData.enable_auto_end_call}
-                          onChange={(e) => setFormData({ ...formData, enable_auto_end_call: e.target.checked })}
-                          className="w-4 h-4"
-                        />
-                        <label className="text-sm font-medium text-gray-700">Auto-end call after silence</label>
-                      </div>
-
-                      {formData.enable_auto_end_call && (
-                        <Input
-                          label="Silence Timeout (ms)"
-                          type="number"
-                          value={formData.end_call_after_silence_ms?.toString()}
-                          onChange={(e) => setFormData({ ...formData, end_call_after_silence_ms: parseInt(e.target.value) })}
-                        />
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Submit Buttons */}
-              <div className="flex gap-3 pt-4 border-t">
-                <Button type="submit" fullWidth size="lg">
-                  {editingAgent ? 'Update Agent' : 'Create Agent'}
-                </Button>
-                {showEditForm && (
-                  <Button type="button" variant="secondary" fullWidth size="lg" onClick={cancelEdit}>
-                    Cancel
-                  </Button>
-                )}
-              </div>
-            </form>
-          </CardBody>
-        </Card>
+      {/* Agent Form */}
+      {(showForm || editingAgent) && (
+        <AgentForm
+          editingAgent={editingAgent}
+          onSubmit={handleSubmit}
+          onCancel={handleCancel}
+        />
       )}
 
       {/* Agent List */}
-      <div className="grid gap-4">
-        {agentList.map((agent) => (
-          <Card key={agent.id}>
-            <CardBody>
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold text-gray-900">{agent.name}</h3>
-                    <Badge variant="info">
-                      {agent.scenario_type === 'driver_checkin' ? 'Check-in' : 'Emergency'}
-                    </Badge>
-                  </div>
-                  {agent.description && <p className="text-sm text-gray-600 mt-1">{agent.description}</p>}
-                  <p className="text-sm text-gray-500 mt-2">
-                    Greeting: <span className="italic">{agent.initial_greeting}</span>
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {agent.enable_backchannel && <Badge variant="success">Backchannel</Badge>}
-                    {agent.enable_filler_words && <Badge variant="success">Filler Words</Badge>}
-                    {agent.ambient_sound !== 'off' && (
-                      <Badge variant="default">Ambient: {agent.ambient_sound}</Badge>
-                    )}
-                  </div>
-                  <div className="mt-2 text-xs text-gray-400">
-                    Created: {formatDate(agent.created_at)}
-                    {agent.retell_agent_id && (
-                      <Badge variant="success" className="ml-2">Active in Retell</Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-2 ml-4">
-                  <Button size="sm" onClick={() => handleEdit(agent)}>
-                    Edit
-                  </Button>
-                  <Button size="sm" variant="danger" onClick={() => handleDelete(agent.id)}>
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
+      {loading ? (
+        <LoadingSpinner message="Loading agents..." />
+      ) : agentList.length === 0 ? (
+        <EmptyState
+          icon="🤖"
+          title="No agents found"
+          message="Create your first AI voice agent to get started"
+        />
+      ) : (
+        <div className="grid gap-4">
+          {agentList.map((agent) => (
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
