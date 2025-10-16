@@ -8,6 +8,8 @@ from typing import Dict, Any, Optional, List
 import httpx
 
 from backend.config import get_settings
+from backend.constants.analysis_schemas import get_analysis_schema
+from backend.utils.retell_payload_builder import build_llm_payload, build_agent_payload
 
 
 logger = logging.getLogger(__name__)
@@ -52,14 +54,7 @@ class RetellService:
         """
         logger.info("Creating LLM configuration")
 
-        payload = {
-            "general_prompt": system_prompt,
-            "begin_message": initial_greeting,
-            "default_dynamic_variables": {
-                "driver_name": "Driver",
-                "load_number": "LOAD-000"
-            }
-        }
+        payload = build_llm_payload(system_prompt, initial_greeting)
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -95,8 +90,10 @@ class RetellService:
             config["initial_greeting"]
         )
 
-        # Build agent payload
-        agent_payload = self._build_agent_payload(config, llm_response["llm_id"])
+        # Build agent payload with analysis schema
+        scenario_type = config.get("scenario_type", "driver_checkin")
+        analysis_schema = get_analysis_schema(scenario_type)
+        agent_payload = build_agent_payload(config, llm_response["llm_id"], analysis_schema)
 
         try:
             async with httpx.AsyncClient() as client:
@@ -254,164 +251,6 @@ class RetellService:
         except Exception as e:
             logger.error(f"Unexpected error fetching call details: {e}")
             return None
-
-    def _build_agent_payload(
-        self,
-        config: Dict[str, Any],
-        llm_id: str
-    ) -> Dict[str, Any]:
-        """
-        Build agent creation payload from configuration.
-
-        Args:
-            config: Agent configuration dictionary
-            llm_id: ID of created LLM configuration
-
-        Returns:
-            Dict containing complete agent payload
-        """
-        agent_payload = {
-            "response_engine": {
-                "type": "retell-llm",
-                "llm_id": llm_id
-            },
-            "voice_id": config.get("voice_id", "11labs-Adrian"),
-        }
-
-        # Add optional fields
-        if config.get("name"):
-            agent_payload["agent_name"] = config["name"]
-
-        if config.get("language"):
-            agent_payload["language"] = config["language"]
-
-        if config.get("enable_backchannel", True):
-            agent_payload["enable_backchannel"] = True
-            if config.get("backchannel_words"):
-                agent_payload["backchannel_words"] = config["backchannel_words"]
-
-        if config.get("interruption_sensitivity") is not None:
-            agent_payload["interruption_sensitivity"] = float(config["interruption_sensitivity"])
-
-        if config.get("responsiveness") is not None:
-            agent_payload["responsiveness"] = float(config["responsiveness"])
-
-        ambient_sound = config.get("ambient_sound")
-        if ambient_sound and ambient_sound != "off":
-            agent_payload["ambient_sound"] = ambient_sound
-            if config.get("ambient_sound_volume") is not None:
-                agent_payload["ambient_sound_volume"] = float(config["ambient_sound_volume"])
-
-        if config.get("pronunciation_guide"):
-            agent_payload["pronunciation_guide"] = config["pronunciation_guide"]
-
-        # Add post-call analysis schema
-        scenario_type = config.get("scenario_type", "driver_checkin")
-        agent_payload["post_call_analysis_data"] = self._build_analysis_schema(scenario_type)
-
-        return agent_payload
-
-    def _build_analysis_schema(self, scenario_type: str) -> List[Dict[str, Any]]:
-        """
-        Build post-call analysis schema based on scenario type.
-
-        Args:
-            scenario_type: Type of scenario ('driver_checkin' or 'emergency_protocol')
-
-        Returns:
-            List of field definitions for post-call analysis
-        """
-        if scenario_type == "emergency_protocol":
-            return [
-                {
-                    "type": "boolean",
-                    "name": "is_emergency",
-                    "description": "Whether this call involves an emergency situation"
-                },
-                {
-                    "type": "enum",
-                    "name": "emergency_type",
-                    "description": "Type of emergency if applicable",
-                    "choices": ["accident", "breakdown", "medical", "flat_tire", "other", "none"]
-                },
-                {
-                    "type": "string",
-                    "name": "safety_status",
-                    "description": "Driver's confirmation of safety status",
-                    "examples": ["Driver confirmed everyone is safe", "Driver reported unsafe conditions"]
-                },
-                {
-                    "type": "enum",
-                    "name": "injury_status",
-                    "description": "Whether there are any injuries",
-                    "choices": ["no_injuries", "injuries_reported", "unknown"]
-                },
-                {
-                    "type": "string",
-                    "name": "location_emergency",
-                    "description": "Specific location of the emergency",
-                    "examples": ["I-10 near exit 42", "Mile marker 123 on I-15"]
-                },
-                {
-                    "type": "boolean",
-                    "name": "load_secure",
-                    "description": "Whether the load/cargo is secure"
-                },
-                {
-                    "type": "string",
-                    "name": "call_summary",
-                    "description": "Brief summary of the emergency call"
-                }
-            ]
-        else:  # driver_checkin (default)
-            return [
-                {
-                    "type": "enum",
-                    "name": "call_outcome",
-                    "description": "The outcome or purpose of the call",
-                    "choices": ["in_transit_update", "arrival_confirmation", "delay_notification", "other"]
-                },
-                {
-                    "type": "enum",
-                    "name": "driver_status",
-                    "description": "Current status of the driver",
-                    "choices": ["driving", "arrived", "unloading", "delayed", "other"]
-                },
-                {
-                    "type": "string",
-                    "name": "current_location",
-                    "description": "Driver's current location",
-                    "examples": ["I-10 near Phoenix", "Exit 42 on I-15", "At delivery location"]
-                },
-                {
-                    "type": "string",
-                    "name": "eta",
-                    "description": "Estimated time of arrival",
-                    "examples": ["Tomorrow at 8 AM", "In 2 hours", "Around 3 PM today"]
-                },
-                {
-                    "type": "string",
-                    "name": "delay_reason",
-                    "description": "Reason for any delays if mentioned",
-                    "examples": ["Heavy traffic", "Weather conditions", "No delays"]
-                },
-                {
-                    "type": "string",
-                    "name": "unloading_status",
-                    "description": "Status of unloading if driver has arrived",
-                    "examples": ["At dock 12", "Waiting for door assignment", "N/A"]
-                },
-                {
-                    "type": "boolean",
-                    "name": "pod_reminder_acknowledged",
-                    "description": "Whether driver acknowledged the POD reminder"
-                },
-                {
-                    "type": "string",
-                    "name": "call_summary",
-                    "description": "Brief summary of the check-in call"
-                }
-            ]
 
     def _convert_timestamp(self, timestamp: Any) -> Optional[str]:
         """
