@@ -2,7 +2,7 @@
  * Agent Card Component - Displays agent information in a card
  */
 
-import { AgentConfiguration } from '../../types';
+import type { AgentConfiguration } from '../../types';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
 import { Card, CardBody } from '../ui/Card';

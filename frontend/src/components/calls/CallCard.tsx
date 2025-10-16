@@ -1,8 +1,4 @@
-/**
- * Call Card Component - Displays call information in a card
- */
-
-import { Call } from '../../types';
+import type { Call } from '../../types';
 import Button from '../ui/Button';
 import Badge from '../ui/Badge';
 import { Card, CardBody } from '../ui/Card';

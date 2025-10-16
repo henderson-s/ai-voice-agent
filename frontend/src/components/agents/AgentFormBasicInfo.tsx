@@ -2,20 +2,26 @@
  * Agent Form - Basic Information Section
  */
 
-import { AgentCreateInput, ScenarioType } from '../../types';
-import Input from '../ui/Input';
-import Select from '../ui/Select';
-import { SCENARIO_TYPE_OPTIONS } from '../../constants/agent';
+import Input from "../ui/Input";
+import Select from "../ui/Select";
+import { SCENARIO_TYPE_OPTIONS } from "../../constants/agent";
+//
+import type { AgentCreateInput, ScenarioType } from "../../types";
 
 interface AgentFormBasicInfoProps {
   formData: AgentCreateInput;
   onChange: (data: Partial<AgentCreateInput>) => void;
 }
 
-export default function AgentFormBasicInfo({ formData, onChange }: AgentFormBasicInfoProps) {
+export default function AgentFormBasicInfo({
+  formData,
+  onChange,
+}: AgentFormBasicInfoProps) {
   return (
     <div className="border-b pb-4">
-      <h4 className="text-md font-semibold text-gray-700 mb-3">Basic Information</h4>
+      <h4 className="text-md font-semibold text-gray-700 mb-3">
+        Basic Information
+      </h4>
       <div className="space-y-4">
         <Input
           label="Name *"
@@ -37,7 +43,9 @@ export default function AgentFormBasicInfo({ formData, onChange }: AgentFormBasi
         <Select
           label="Scenario Type *"
           value={formData.scenario_type}
-          onChange={(e) => onChange({ scenario_type: e.target.value as ScenarioType })}
+          onChange={(e) =>
+            onChange({ scenario_type: e.target.value as ScenarioType })
+          }
           options={SCENARIO_TYPE_OPTIONS}
           helpText="Emergency Protocol can dynamically pivot when emergency keywords are detected"
           required

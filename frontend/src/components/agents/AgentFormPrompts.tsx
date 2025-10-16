@@ -1,20 +1,22 @@
-/**
- * Agent Form - Prompts & Greetings Section
- */
-
-import { AgentCreateInput } from '../../types';
-import Input from '../ui/Input';
-import Textarea from '../ui/Textarea';
+import Input from "../ui/Input";
+import Textarea from "../ui/Textarea";
+//
+import type { AgentCreateInput } from "../../types";
 
 interface AgentFormPromptsProps {
   formData: AgentCreateInput;
   onChange: (data: Partial<AgentCreateInput>) => void;
 }
 
-export default function AgentFormPrompts({ formData, onChange }: AgentFormPromptsProps) {
+export default function AgentFormPrompts({
+  formData,
+  onChange,
+}: AgentFormPromptsProps) {
   return (
     <div className="border-b pb-4">
-      <h4 className="text-md font-semibold text-gray-700 mb-3">Prompts & Greetings</h4>
+      <h4 className="text-md font-semibold text-gray-700 mb-3">
+        Prompts & Greetings
+      </h4>
       <div className="space-y-4">
         <Textarea
           label="System Prompt *"
@@ -32,8 +34,15 @@ export default function AgentFormPrompts({ formData, onChange }: AgentFormPrompt
           onChange={(e) => onChange({ initial_greeting: e.target.value })}
           helpText={
             <>
-              Use <code className="bg-gray-100 px-1 rounded">{'{{driver_name}}'}</code> and{' '}
-              <code className="bg-gray-100 px-1 rounded">{'{{load_number}}'}</code> placeholders
+              Use{" "}
+              <code className="bg-gray-100 px-1 rounded">
+                {"{{driver_name}}"}
+              </code>{" "}
+              and{" "}
+              <code className="bg-gray-100 px-1 rounded">
+                {"{{load_number}}"}
+              </code>{" "}
+              placeholders
             </>
           }
           required
