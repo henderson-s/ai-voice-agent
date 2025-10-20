@@ -21,8 +21,10 @@ class Settings(BaseSettings):
     supabase_key: str
     supabase_service_key: str
 
-    # Retell AI Configuration
-    retell_api_key: str
+    # AI Service Configuration
+    openai_api_key: str
+    cartesia_api_key: str
+    deepgram_api_key: str
 
     # Server Configuration
     port: int = 8000
@@ -31,6 +33,10 @@ class Settings(BaseSettings):
 
     # Logging Configuration
     log_level: str = "INFO"
+
+    # Pipecat Configuration
+    enable_analytics: bool = True
+    max_call_duration: int = 600  # seconds
 
     class Config:
         env_file = str(ENV_FILE)

@@ -19,18 +19,24 @@ class WebCallCreate(BaseModel):
 class CallResponse(BaseModel):
     id: str
     user_id: str
-    agent_configuration_id: Optional[str]
+    agent_configuration_id: Optional[str] = None
     driver_name: str
     phone_number: str
     load_number: str
-    retell_call_id: Optional[str]
+    retell_call_id: Optional[str] = None
     status: str
     call_type: str
-    initiated_at: datetime
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     duration_seconds: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = None
+    recording_url: Optional[str] = None
+    public_log_url: Optional[str] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
 
 
 class WebCallResponse(BaseModel):

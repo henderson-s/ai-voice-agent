@@ -3,7 +3,6 @@ from typing import List
 import logging
 from backend.models.agent import AgentConfigCreate, AgentConfigUpdate, AgentConfigResponse
 from backend.database import Database, get_db
-from backend.services.retell import RetellService, get_retell_service
 from backend.utils.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -15,45 +14,31 @@ async def create_agent(
     agent: AgentConfigCreate,
     current_user=Depends(get_current_user),
     db: Database=Depends(get_db),
-    retell: RetellService=Depends(get_retell_service)
 ):
-    """Create agent in database and immediately sync with Retell AI"""
-    data = agent.model_dump()
-    data["user_id"] = current_user.id
-
-    # First, insert into database
-    response = db.client.table("agent_configurations").insert(data).execute()
-    agent_record = response.data[0]
-
-    # Immediately create in Retell AI
+    """
+    Create agent configuration in database.
+    
+    With Pipecat, agents are not pre-created in external services.
+    The Pipecat pipeline is created dynamically when a call is initiated.
+    """
+    logger.info(f"Creating agent configuration for user {current_user.id}")
+    
     try:
-        logger.info(f"Creating agent in Retell AI: {agent_record['name']}")
-        retell_response = await retell.create_agent(agent_record)
+        data = agent.model_dump()
+        data["user_id"] = current_user.id
 
-        # Update database with Retell IDs
-        db.client.table("agent_configurations")\
-            .update({
-                "retell_agent_id": retell_response["agent_id"],
-                "retell_llm_id": retell_response["llm_id"]
-            })\
-            .eq("id", agent_record["id"])\
-            .execute()
+        # Insert into database
+        response = db.client.table("agent_configurations").insert(data).execute()
+        agent_record = response.data[0]
 
-        # Fetch updated record to return
-        updated_response = db.client.table("agent_configurations")\
-            .select("*")\
-            .eq("id", agent_record["id"])\
-            .execute()
-
-        logger.info(f"✅ Agent created in Retell AI: {retell_response['agent_id']}")
-        return updated_response.data[0]
+        logger.info(f"✅ Agent configuration created: {agent_record['name']} (ID: {agent_record['id']})")
+        return agent_record
 
     except Exception as e:
-        logger.error(f"❌ Failed to create agent in Retell AI: {str(e)}")
-        # Agent exists in DB but not in Retell - will be created on first call
+        logger.error(f"❌ Failed to create agent configuration: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Agent saved to database but failed to sync with Retell AI: {str(e)}"
+            detail=f"Failed to create agent configuration: {str(e)}"
         )
 
 
