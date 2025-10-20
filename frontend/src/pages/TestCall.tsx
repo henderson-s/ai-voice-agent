@@ -1,8 +1,17 @@
-import { useState, useEffect } from 'react';
-import { RetellWebClient } from 'retell-client-js-sdk';
-import type { AgentConfiguration, Call, WebCallInput, PhoneCallInput, TranscriptEntry } from '../types';
+/**
+ * Test Call Page - Pipecat WebRTC Implementation
+ * 
+ * Provides a complete web-based calling interface using
+ * Pipecat voice pipeline with real-time audio streaming.
+ */
+
+import { useState, useEffect, useRef } from 'react';
+import type { AgentConfiguration, Call, WebCallInput } from '../types';
 import { agents as agentsApi, calls as callsApi } from '../lib/api';
+import { createPipecatWebSocket, type TranscriptMessage } from '../utils/websocket';
 import CallResultsDisplay from '../components/CallResultsDisplay';
+import Alert from '../components/ui/Alert';
+import Button from '../components/ui/Button';
 
 type CallType = 'web' | 'phone';
 
@@ -31,16 +40,18 @@ export default function TestCall() {
   const [callEnded, setCallEnded] = useState(false);
   const [processingResults, setProcessingResults] = useState(false);
   const [currentCall, setCurrentCall] = useState<Call | null>(null);
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
-  const [retellClient] = useState(() => new RetellWebClient());
+  const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
+  const [callStatus, setCallStatus] = useState<string>('');
+
+  const wsClientRef = useRef<ReturnType<typeof createPipecatWebSocket> | null>(null);
 
   useEffect(() => {
     loadAgents();
-    setupRetellListeners();
 
     return () => {
-      if (inCall) {
-        retellClient.stopCall();
+      // Cleanup on unmount
+      if (wsClientRef.current) {
+        wsClientRef.current.stopAudio();
       }
     };
   }, []);
@@ -58,38 +69,10 @@ export default function TestCall() {
     }
   };
 
-  const setupRetellListeners = () => {
-    retellClient.on('update', (update: any) => {
-      if (update.transcript) {
-        setTranscript(update.transcript);
-      }
-    });
-
-    retellClient.on('call_started', () => {
-      setInCall(true);
-      setSuccess('Call started - speak now!');
-    });
-
-    retellClient.on('call_ended', async () => {
-      setInCall(false);
-      setCallEnded(true);
-      setProcessingResults(true);
-      setSuccess('Call ended. Processing transcript and extracting data...');
-
-      await fetchCallResultsWithRetry();
-    });
-
-    retellClient.on('error', (error: any) => {
-      console.error('Retell error:', error);
-      setError(`Call error: ${error.message}`);
-      setInCall(false);
-    });
-  };
-
   const fetchCallResultsWithRetry = async () => {
     const MAX_RETRIES = 5;
     const RETRY_DELAY = 2000;
-    const INITIAL_DELAY = 5000;
+    const INITIAL_DELAY = 3000;
 
     await new Promise((resolve) => setTimeout(resolve, INITIAL_DELAY));
 
@@ -97,13 +80,9 @@ export default function TestCall() {
       try {
         setSuccess(`Fetching call results... (${attempt + 1}/${MAX_RETRIES})`);
 
-        const callId = await findCallId();
-        if (!callId) {
-          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
-          continue;
-        }
+        if (!currentCall) continue;
 
-        const fullData = await callsApi.getFull(callId);
+        const fullData = await callsApi.getFull(currentCall.id);
 
         if (fullData.results) {
           setCurrentCall(fullData.call);
@@ -123,47 +102,9 @@ export default function TestCall() {
     setSuccess('Call completed. Click "Refresh Data" if results don\'t appear.');
   };
 
-  const findCallId = async (): Promise<string | null> => {
-    if (!currentCall) return null;
-
-    try {
-      const call = await callsApi.get(currentCall.id);
-      return call.id;
-    } catch {
-      // Try finding in call list
-      try {
-        const allCalls = await callsApi.list();
-        const foundCall = allCalls.find(
-          (c) => c.retell_call_id === currentCall.retell_call_id || c.id === currentCall.id
-        );
-        return foundCall?.id || null;
-      } catch {
-        return null;
-      }
-    }
-  };
-
   const handlePhoneCall = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      const phoneCallData: PhoneCallInput = {
-        agent_configuration_id: formData.agent_configuration_id,
-        driver_name: formData.driver_name,
-        phone_number: formData.phone_number,
-        load_number: formData.load_number,
-      };
-
-      await callsApi.createPhone(phoneCallData);
-      setSuccess('Phone call initiated successfully!');
-      resetForm();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to initiate phone call');
-    } finally {
-      setLoading(false);
-    }
+    setError('Phone calling not yet implemented with Pipecat. Use web calls for now.');
   };
 
   const handleWebCall = async (e: React.FormEvent) => {
@@ -174,6 +115,7 @@ export default function TestCall() {
     setTranscript([]);
 
     try {
+      // Create call in backend
       const webCallData: WebCallInput = {
         agent_configuration_id: formData.agent_configuration_id,
         driver_name: formData.driver_name,
@@ -181,11 +123,42 @@ export default function TestCall() {
       };
 
       const response = await callsApi.createWeb(webCallData);
-      setCurrentCall({ id: response.call_id } as Call);
+      setCurrentCall({ id: response.call_id, status: 'initiated' } as Call);
 
-      await retellClient.startCall({
-        accessToken: response.access_token,
+      // Create WebSocket client with callbacks
+      const wsClient = createPipecatWebSocket(response.call_id, {
+        onTranscript: (transcript) => {
+          setTranscript((prev) => [...prev, transcript]);
+        },
+        onStatus: (status) => {
+          setCallStatus(status);
+          if (status === 'started') {
+            setInCall(true);
+            setSuccess('🎙️ Call started - speak now!');
+          } else if (status === 'stopped') {
+            setInCall(false);
+            setCallEnded(true);
+            setProcessingResults(true);
+            setSuccess('Call ended. Processing transcript...');
+            fetchCallResultsWithRetry();
+          }
+        },
+        onError: (err) => {
+          setError(`Call error: ${err}`);
+          setInCall(false);
+        },
       });
+      
+      wsClientRef.current = wsClient;
+
+      // Connect to WebSocket
+      await wsClient.connect();
+      setSuccess('Connected to voice pipeline...');
+
+      // Start audio streaming
+      await wsClient.startAudio();
+      setSuccess('🎙️ Microphone active - call in progress!');
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start web call');
       setInCall(false);
@@ -195,8 +168,25 @@ export default function TestCall() {
   };
 
   const endCall = async () => {
-    retellClient.stopCall();
-    setSuccess('Call ended by user. Fetching results...');
+    try {
+      if (wsClientRef.current) {
+        await wsClientRef.current.stopAudio();
+      }
+      
+      if (currentCall) {
+        await callsApi.endCall(currentCall.id);
+      }
+      
+      setInCall(false);
+      setCallEnded(true);
+      setProcessingResults(true);
+      setSuccess('Call ended. Processing results...');
+      
+      await fetchCallResultsWithRetry();
+    } catch (err) {
+      setError('Failed to end call');
+      console.error(err);
+    }
   };
 
   const resetForm = () => {
@@ -215,6 +205,7 @@ export default function TestCall() {
     setTranscript([]);
     setSuccess('');
     setError('');
+    setCallStatus('');
     resetForm();
   };
 
@@ -223,7 +214,7 @@ export default function TestCall() {
 
     try {
       setSuccess('Fetching latest call data...');
-      const updatedCall = await callsApi.refresh(currentCall.id);
+      const updatedCall = await callsApi.get(currentCall.id);
       setCurrentCall(updatedCall);
       setSuccess('Call data refreshed successfully!');
     } catch (err) {
@@ -238,15 +229,28 @@ export default function TestCall() {
 
       {/* Success Message */}
       {success && (
-        <div className="mb-4 p-4 bg-green-100 text-green-700 rounded-lg border border-green-200">
+        <Alert variant="success" className="mb-4">
           {success}
-        </div>
+        </Alert>
       )}
 
       {/* Error Message */}
       {error && (
-        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg border border-red-200">
+        <Alert variant="error" className="mb-4">
           {error}
+        </Alert>
+      )}
+
+      {/* Call Status Indicator */}
+      {inCall && (
+        <div className="mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+              <span className="font-semibold text-indigo-900">Call in Progress</span>
+            </div>
+            <span className="text-sm text-indigo-600">Status: {callStatus}</span>
+          </div>
         </div>
       )}
 
@@ -270,7 +274,7 @@ export default function TestCall() {
                 <div className="text-xs font-semibold mb-1 uppercase">
                   {item.role === 'agent' ? '🤖 Agent' : '👤 You'}
                 </div>
-                <div className="text-sm">{item.content}</div>
+                <div className="text-sm">{item.text}</div>
               </div>
             ))}
           </div>
@@ -316,7 +320,7 @@ export default function TestCall() {
               }`}
               disabled={inCall || callEnded}
             >
-              Web Call (Test Now)
+              Web Call (Browser)
             </button>
             <button
               type="button"
@@ -328,7 +332,7 @@ export default function TestCall() {
               }`}
               disabled={inCall || callEnded}
             >
-              Phone Call
+              Phone Call (Coming Soon)
             </button>
           </div>
         </div>
@@ -350,11 +354,15 @@ export default function TestCall() {
               required
               disabled={inCall || callEnded}
             >
-              {agentList.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
+              {agentList.length === 0 ? (
+                <option value="">No agents available</option>
+              ) : (
+                agentList.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -405,28 +413,42 @@ export default function TestCall() {
             />
           </div>
 
+          {/* Action Buttons */}
           {!inCall && !callEnded ? (
-            <button
+            <Button
               type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              disabled={loading || agentList.length === 0}
+              fullWidth
+              size="lg"
             >
               {loading
                 ? 'Starting...'
                 : callType === 'web'
-                ? 'Start Web Call'
-                : 'Initiate Phone Call'}
-            </button>
+                ? '🎙️ Start Web Call'
+                : '📞 Initiate Phone Call'}
+            </Button>
           ) : inCall ? (
-            <button
+            <Button
               type="button"
               onClick={endCall}
-              className="w-full bg-red-600 text-white py-2 rounded-lg font-medium hover:bg-red-700 transition"
+              variant="danger"
+              fullWidth
+              size="lg"
             >
-              End Call
-            </button>
+              🛑 End Call
+            </Button>
           ) : null}
         </form>
+
+        {/* Microphone Permission Note */}
+        {callType === 'web' && !inCall && (
+          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-sm text-yellow-800">
+              <span className="font-semibold">🎤 Note:</span> Your browser will ask for microphone
+              permission when you start the call.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
