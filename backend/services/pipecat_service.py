@@ -168,46 +168,52 @@ class PipecatVoiceService:
             logger.error(f"Failed to create pipeline components: {e}", exc_info=True)
             raise PipecatServiceError(f"Component creation failed: {str(e)}")
 
-    async def process_audio_input(
+    async def create_pipeline_runner(
         self,
-        audio_data: bytes,
-        components: dict,
-    ) -> Optional[bytes]:
+        call_id: str,
+        websocket,
+        context: CallContext,
+        on_transcript_callback=None,
+        on_audio_callback=None,
+    ):
         """
-        Process audio input through the pipeline.
+        Create a complete Pipecat pipeline runner.
         
         Args:
-            audio_data: Raw audio bytes from microphone
-            components: Dictionary of pipeline components
+            call_id: Call identifier
+            websocket: WebSocket connection
+            context: Call context
+            on_transcript_callback: Transcript callback
+            on_audio_callback: Audio callback
             
         Returns:
-            Audio response bytes or None
+            PipecatPipelineRunner instance
         """
         try:
-            # Process: Audio → STT → LLM → TTS → Audio
-            # This is a simplified flow; full implementation would use
-            # Pipecat's frame-based processing
+            from backend.services.pipecat_transport import PipecatPipelineRunner
             
-            # 1. Speech-to-Text
-            stt = components["stt"]
-            # text = await stt.process(audio_data)
+            logger.info(f"Creating pipeline runner for call {call_id}")
             
-            # 2. LLM Processing
-            llm = components["llm"]
-            # response_text = await llm.process(text)
+            runner = PipecatPipelineRunner(
+                call_id=call_id,
+                websocket=websocket,
+                system_prompt=context.system_prompt,
+                initial_greeting=context.initial_greeting,
+                scenario_type=context.scenario_type,
+                emergency_keywords=context.emergency_keywords,
+                on_transcript_callback=on_transcript_callback,
+                on_audio_callback=on_audio_callback,
+            )
             
-            # 3. Text-to-Speech
-            tts = components["tts"]
-            # audio_response = await tts.process(response_text)
+            # Create the pipeline
+            await runner.create_pipeline()
             
-            # return audio_response
-            
-            # For now, return None until full integration
-            return None
+            logger.info("✅ Pipeline runner created successfully")
+            return runner
             
         except Exception as e:
-            logger.error(f"Error processing audio: {e}", exc_info=True)
-            return None
+            logger.error(f"Failed to create pipeline runner: {e}", exc_info=True)
+            raise PipecatServiceError(f"Pipeline runner creation failed: {str(e)}")
 
 
 def get_pipecat_service() -> PipecatVoiceService:

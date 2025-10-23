@@ -56,6 +56,12 @@ class TranscriptLogger(FrameProcessor):
         """Process frames and extract transcripts."""
         await super().process_frame(frame, direction)
 
+        # Track frame processing in analytics
+        if self.analytics_observer:
+            frame_type = type(frame).__name__
+            direction_str = "upstream" if direction == FrameDirection.UPSTREAM else "downstream"
+            await self.analytics_observer.track_frame_processing(frame_type, direction_str)
+
         # Track user transcripts (from STT)
         if isinstance(frame, TextFrame) and direction == FrameDirection.UPSTREAM:
             text = frame.text
@@ -101,7 +107,7 @@ async def create_voice_bot(
     emergency_keywords: List[str],
     on_transcript_callback=None,
     voice_config: Dict[str, Any] = None,
-) -> Pipeline:
+) -> Dict[str, Any]:
     """
     Create a complete voice bot pipeline.
     
@@ -203,7 +209,7 @@ async def create_voice_bot(
     ])
     
     # ============================================
-    # 7. Return Pipeline with Initial Messages
+    # 7. Return Complete Bot Configuration
     # ============================================
     
     return {
@@ -211,6 +217,11 @@ async def create_voice_bot(
         "messages": messages,
         "analytics_observer": analytics_observer,
         "initial_greeting": initial_greeting,
+        "stt": stt,
+        "tts": tts,
+        "llm": llm,
+        "user_aggregator": user_aggregator,
+        "assistant_aggregator": assistant_aggregator,
     }
 
 

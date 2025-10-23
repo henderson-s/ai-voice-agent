@@ -13,9 +13,9 @@ from typing import Optional, Dict, Any
 from fastapi import WebSocket, WebSocketDisconnect
 
 from backend.services.pipecat_manager import get_pipeline_manager
+from backend.services.pipecat_service import get_pipecat_service
 from backend.observers.analytics_observer import AnalyticsObserver
 from backend.database import get_supabase_client
-from backend.services.audio_processor import AudioProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +39,11 @@ class CallWebSocketHandler:
         self.websocket = websocket
         self.call_id = call_id
         self.pipeline_manager = get_pipeline_manager()
+        self.pipecat_service = get_pipecat_service()
         self.session = None
         self.running = False
         self.db_client = get_supabase_client()
-        self.audio_processor = None
+        self.pipeline_runner = None
         logger.info(f"WebSocket handler initialized for call {call_id}")
 
     async def handle_connection(self) -> None:
@@ -142,41 +143,41 @@ class CallWebSocketHandler:
         """
         Handle audio data from client.
         
-        Sends to Deepgram for transcription → OpenAI for response → Cartesia for TTS.
+        Processes through Pipecat pipeline: Audio → STT → LLM → TTS → Audio
         
         Args:
             audio_bytes: Raw audio data from client (16kHz, 16-bit PCM)
         """
         try:
-            if not self.audio_processor:
-                logger.warning("Audio processor not started")
+            if not self.pipeline_runner:
+                logger.warning("Pipeline runner not started")
                 return
             
-            # Send audio to Deepgram for transcription
-            await self.audio_processor.process_audio_input(audio_bytes)
+            # Send audio to Pipecat pipeline
+            await self.pipeline_runner.process_audio(audio_bytes)
             
         except Exception as e:
             logger.error(f"Error processing audio: {e}", exc_info=True)
 
     async def _handle_start(self) -> None:
-        """Handle call start event and create audio processor."""
-        logger.info(f"Starting call pipeline for {self.call_id}")
+        """Handle call start event and create Pipecat pipeline."""
+        logger.info(f"Starting Pipecat pipeline for {self.call_id}")
         
         try:
             if not self.session:
                 raise Exception("Session not found")
             
-            # Create audio processor with real-time callbacks
-            self.audio_processor = AudioProcessor(
+            # Create Pipecat pipeline runner
+            self.pipeline_runner = await self.pipecat_service.create_pipeline_runner(
                 call_id=self.call_id,
-                system_prompt=self.session.context.system_prompt,
-                initial_greeting=self.session.context.initial_greeting,
+                websocket=self.websocket,
+                context=self.session.context,
                 on_transcript_callback=self._send_transcript,
                 on_audio_callback=self._send_audio,
             )
             
-            # Start the processor (this will send initial greeting and audio!)
-            await self.audio_processor.start()
+            # Start the pipeline (agent will speak first!)
+            await self.pipeline_runner.start_pipeline()
             
             # Send started status
             await self._send_message({
@@ -185,10 +186,10 @@ class CallWebSocketHandler:
             })
             
             self._update_call_status("in_progress")
-            logger.info("✅ Audio processor started")
+            logger.info("✅ Pipecat pipeline started - agent will speak first!")
             
         except Exception as e:
-            logger.error(f"Failed to start audio processor: {e}", exc_info=True)
+            logger.error(f"Failed to start Pipecat pipeline: {e}", exc_info=True)
             await self._send_error(f"Failed to start call: {str(e)}")
 
     async def _handle_stop(self) -> None:
@@ -197,9 +198,9 @@ class CallWebSocketHandler:
         
         self.running = False
         
-        # Stop audio processor and save results
-        if self.audio_processor and self.session:
-            await self.audio_processor.stop(self.session.context.scenario_type)
+        # Stop Pipecat pipeline
+        if self.pipeline_runner:
+            await self.pipeline_runner.stop_pipeline()
         
         await self._send_message({
             "type": "stopped",
@@ -294,10 +295,10 @@ class CallWebSocketHandler:
         logger.info(f"Cleaning up WebSocket for call {self.call_id}")
         
         try:
-            # Stop audio processor
-            if self.audio_processor:
-                await self.audio_processor.stop()
-                self.audio_processor = None
+            # Stop Pipecat pipeline
+            if self.pipeline_runner:
+                await self.pipeline_runner.stop_pipeline()
+                self.pipeline_runner = None
             
             # End session if still active
             if self.session:

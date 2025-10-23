@@ -232,3 +232,37 @@ class AnalyticsObserver:
             Dictionary of current metrics
         """
         return self.metrics.copy()
+
+    async def track_pipeline_event(self, event_type: str, event_data: Dict[str, Any] = None) -> None:
+        """
+        Track events from Pipecat pipeline.
+        
+        Args:
+            event_type: Type of pipeline event
+            event_data: Additional event data
+        """
+        try:
+            await self._log_event(event_type, event_data)
+            logger.debug(f"Tracked pipeline event: {event_type}")
+        except Exception as e:
+            logger.error(f"Failed to track pipeline event: {e}", exc_info=True)
+
+    async def track_frame_processing(self, frame_type: str, direction: str) -> None:
+        """
+        Track frame processing in Pipecat pipeline.
+        
+        Args:
+            frame_type: Type of frame being processed
+            direction: Processing direction (upstream/downstream)
+        """
+        try:
+            await self._log_event(
+                "frame_processed",
+                {
+                    "frame_type": frame_type,
+                    "direction": direction,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to track frame processing: {e}", exc_info=True)
