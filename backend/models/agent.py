@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
@@ -10,7 +10,15 @@ class AgentConfigCreate(BaseModel):
     system_prompt: str
     initial_greeting: str
 
-    # Voice settings
+    # Pipecat AI Provider Configuration
+    llm_provider: Optional[str] = "openai"
+    llm_model: Optional[str] = "gpt-4"
+    tts_provider: Optional[str] = "cartesia"
+    tts_voice_id: Optional[str] = "sonic-english"
+    stt_provider: Optional[str] = "deepgram"
+    pipecat_config: Optional[Dict[str, Any]] = {}
+
+    # Voice settings (legacy compatibility)
     voice_id: Optional[str] = "11labs-Adrian"
     language: Optional[str] = "en-US"
 
@@ -78,14 +86,28 @@ class AgentConfigResponse(BaseModel):
     id: str
     user_id: str
     name: str
-    description: Optional[str]
+    description: Optional[str] = None
     scenario_type: str
     system_prompt: str
     initial_greeting: str
-    retell_agent_id: Optional[str]
-    retell_llm_id: Optional[str]
+    
+    # Legacy Retell fields (nullable for Pipecat)
+    retell_agent_id: Optional[str] = None
+    retell_llm_id: Optional[str] = None
+    
+    # Pipecat AI Provider Configuration
+    llm_provider: Optional[str] = "openai"
+    llm_model: Optional[str] = "gpt-4"
+    tts_provider: Optional[str] = "cartesia"
+    tts_voice_id: Optional[str] = "sonic-english"
+    stt_provider: Optional[str] = "deepgram"
+    pipecat_config: Optional[Dict[str, Any]] = {}
+    
+    # Voice settings
     voice_id: str
     language: str
+    
+    # Advanced settings
     enable_backchannel: bool
     backchannel_words: List[str]
     enable_filler_words: bool
@@ -105,4 +127,7 @@ class AgentConfigResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    
+    class Config:
+        from_attributes = True
 

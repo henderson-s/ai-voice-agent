@@ -16,6 +16,7 @@ const navLinks: NavLink[] = [
   { to: '/dashboard/agents', label: 'Agents' },
   { to: '/dashboard/test-call', label: 'Test Call' },
   { to: '/dashboard/calls', label: 'Call History' },
+  { to: '/dashboard/analytics', label: 'Analytics' },
 ];
 
 export default function Navigation() {

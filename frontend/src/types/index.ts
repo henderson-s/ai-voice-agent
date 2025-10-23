@@ -127,8 +127,9 @@ export interface WebCallInput {
 }
 
 export interface WebCallResponse {
-  access_token: string;
   call_id: string;
+  session_id: string;
+  status: string;
 }
 
 // ============================================

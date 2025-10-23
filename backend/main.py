@@ -4,14 +4,15 @@ FastAPI application entry point for Voice Agent API.
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.config import setup_logging, get_settings
-from backend.routes import auth, agents, calls
+from backend.routes import auth, agents, calls, analytics
+from backend.websockets.call_handler import CallWebSocketHandler
 
 
 # Setup logging before any other imports
@@ -112,6 +113,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(auth.router)
 app.include_router(agents.router)
 app.include_router(calls.router)
+app.include_router(analytics.router)
 
 
 @app.get("/", tags=["Health"])
@@ -136,6 +138,17 @@ async def health_check():
         "status": "healthy",
         "service": "voice-agent-api",
     }
+
+
+@app.websocket("/ws/call/{call_id}")
+async def websocket_endpoint(websocket: WebSocket, call_id: str):
+    """
+    WebSocket endpoint for real-time voice calls.
+    
+    Handles bidirectional audio streaming for Pipecat pipelines.
+    """
+    handler = CallWebSocketHandler(websocket, call_id)
+    await handler.handle_connection()
 
 
 if __name__ == "__main__":

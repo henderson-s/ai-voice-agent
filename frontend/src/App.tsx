@@ -10,6 +10,7 @@ import Register from './pages/Register';
 import Agents from './pages/Agents';
 import TestCall from './pages/TestCall';
 import Calls from './pages/Calls';
+import Analytics from './pages/Analytics';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -48,6 +49,7 @@ function App() {
             <Route path="agents" element={<Agents />} />
             <Route path="test-call" element={<TestCall />} />
             <Route path="calls" element={<Calls />} />
+            <Route path="analytics" element={<Analytics />} />
           </Route>
 
           {/* Root redirect and 404 catch all */}
